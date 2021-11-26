@@ -1,6 +1,10 @@
 package contracts
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
@@ -11,29 +15,79 @@ type VaccinePassport struct {
 
 // Account : The asset being tracked on the chain
 type Passport struct {
-	// Account details
+	// Vaccine details
+	PassportID    string `json:"passportID"`
+	DocNumber     string `json:"docNumber"`
+	Name          string `json:"name"`
+	DOB           string `json:"dob"`
+	VaccineType   string `json:"vaccineType"`
+	DateOfDose1   string `json:"dateOfDose1"`
+	DateOfDose2   string `json:"dateOfDose2"`
+	VaccineStatus string `json:"vaccineStatus"`
 }
+
+var passportIDCounter int64
 
 // InitLedger : Init the ledger
 func (spc *VaccinePassport) InitLedger(ctx contractapi.TransactionContextInterface) error {
+	passportIDCounter = 0
 	return nil
 }
 
-// RegisterUserAccount : User registers his account
-func (spc *VaccinePassport) RegisterUserAccount(ctx contractapi.TransactionContextInterface, name string, bank string) (*Passport, error) {
-	// your Register logic
+// VaccineDetails : Enter vaccine details of a user to be reviewed by approver
+func (spc *VaccinePassport) VaccineDetails(ctx contractapi.TransactionContextInterface, docnumber string, name string,
+	dob string, vaccinetype string, dateofdose1 string, dateofdose2 string) (*Passport, error) {
+
+	// check if there is already a record for the document submitted
+	exists, err := spc.AssetExists(ctx, docnumber)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("the asset %s already exists", docnumber)
+	}
+
+	// increment the global variable to get new passportID
+	passportIDCounter += 1
+	// attach the ID as prefix to the counter and get the passport number
+	id := "ID" + strconv.FormatInt(passportIDCounter, 10)
+
+	passport := Passport{
+		PassportID:    id,
+		DocNumber:     docnumber,
+		Name:          name,
+		DOB:           dob,
+		VaccineType:   vaccinetype,
+		DateOfDose1:   dateofdose1,
+		DateOfDose2:   dateofdose2,
+		VaccineStatus: "pending",
+	}
+
+	vaccineBytes, err := json.Marshal(passport)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ctx.GetStub().PutState(id, vaccineBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return &passport, nil
+}
+
+// AssetExists returns true when asset with given ID exists in world state
+func (spc *VaccinePassport) AssetExists(ctx contractapi.TransactionContextInterface, docnumber string) (bool, error) {
+	assetJSON, err := ctx.GetStub().GetState(docnumber)
+	if err != nil {
+		return false, fmt.Errorf("failed to read from world state: %v", err)
+	}
+
+	return assetJSON != nil, nil
+}
+
+// UpdateStatus : Update the status of passport once review is done
+func (spc *VaccinePassport) UpdateStatus(ctx contractapi.TransactionContextInterface, passportid string, status string) (*Passport, error) {
+
 	return nil, nil
-}
-
-// Balance : to check the senders balance
-func (spc *VaccinePassport) Balance(ctx contractapi.TransactionContextInterface) (int64, error) {
-	// your balance logic
-
-	return 0, nil
-}
-
-// Transfer : to transfer amount and update balances
-func (spc *VaccinePassport) Transfer(ctx contractapi.TransactionContextInterface, beneficiary string, amount int64) (string, error) {
-	// your Tranfer logic
-	return "", nil
 }
